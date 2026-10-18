@@ -1,0 +1,96 @@
+{
+  "project_id": "PRJ001",
+  "project_name": "Atlas Search",
+  "project_status": "delayed",
+  "project_description": "Atlas Search delivers a fictional NovaTech capability. Tenant isolation gate blocks the retrieval pilot.",
+  "project_blockers": [
+    "Tenant isolation gate blocks the retrieval pilot."
+  ],
+  "decision_id": "DEC001",
+  "decision_title": "Require tenant-scoped vector indexes before Atlas pilot",
+  "decision_description": "An isolation review found cross-tenant retrieval possible in the shared index. The pilot is held until per-tenant filters are enforced and tested.",
+  "decision_status": "rejected",
+  "owner_id": "EMP004",
+  "owner_name": "Talia Wren",
+  "owner_title": "Security Analyst",
+  "owner_expertise": [
+    "privacy engineering",
+    "threat modeling",
+    "identity"
+  ],
+  "meeting_id": "MTG001",
+  "meeting_title": "NovaTech Weekly Delivery Review 01",
+  "meeting_date": "2025-01-16T09:00:00Z",
+  "meeting_source": "# NovaTech Weekly Delivery Review 01\n\n- Meeting ID: MTG001\n- Date: 2025-01-16T09:00:00Z\n- Status: final\n- Attendees: EMP001, EMP004, EMP007, EMP010\n\n## Discussion\nNovaTech reviewed delivery progress, dependencies, and operational risks. Participants compared current evidence with earlier guidance and recorded the rationale below.\n\n## Decision DEC001: Require tenant-scoped vector indexes before Atlas pilot\nAn isolation review found cross-tenant retrieval possible in the shared index. The pilot is held until per-tenant filters are enforced and tested.\n- Status: rejected\n- Affects: PRJ001 (Atlas Search)\n- Made by: EMP004\n",
+  "dependent_projects": [
+    {
+      "id": "PRJ002",
+      "name": "Beacon Billing",
+      "status": "at_risk"
+    },
+    {
+      "id": "PRJ005",
+      "name": "Echo Console",
+      "status": "at_risk"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TASK001",
+      "status": "blocked",
+      "title": "Atlas tenant-filter integration"
+    },
+    {
+      "id": "TASK002",
+      "status": "blocked",
+      "title": "Atlas isolation review"
+    },
+    {
+      "id": "TASK021",
+      "status": "todo",
+      "title": "Atlas Search delivery task 21"
+    },
+    {
+      "id": "TASK031",
+      "status": "in_progress",
+      "title": "Atlas Search delivery task 31"
+    },
+    {
+      "id": "TASK041",
+      "status": "todo",
+      "title": "Atlas Search delivery task 41"
+    }
+  ],
+  "documents": [
+    {
+      "id": "DOC014",
+      "status": "current",
+      "text": "# Service Incident Review Template\n\n- Document ID: DOC014\n- Source ID: DOCUMENT-DOC014\n- Status: current\n- Updated: 2025-07-18T09:00:00Z\n\nCaptures timeline, impact, decision links, owners, and follow-up tasks.\n\nThis fictional NovaTech document is evidence for the project references listed in the structured catalog. Use status and update time to resolve conflicting guidance.\n",
+      "title": "Service Incident Review Template",
+      "updated_at": "2025-07-18T09:00:00Z"
+    },
+    {
+      "id": "DOC006",
+      "status": "current",
+      "text": "# Security Posture API Guide\n\n- Document ID: DOC006\n- Source ID: DOCUMENT-DOC006\n- Status: current\n- Updated: 2025-07-10T09:00:00Z\n\nOnly reviewed posture states may be exposed to product surfaces.\n\nThis fictional NovaTech document is evidence for the project references listed in the structured catalog. Use status and update time to resolve conflicting guidance.\n",
+      "title": "Security Posture API Guide",
+      "updated_at": "2025-07-10T09:00:00Z"
+    },
+    {
+      "id": "DOC002",
+      "status": "superseded",
+      "text": "# Atlas Pilot Checklist\n\n- Document ID: DOC002\n- Source ID: DOCUMENT-DOC002\n- Status: superseded\n- Updated: 2025-07-06T09:00:00Z\n\nOlder checklist allowed a shared index during internal pilots; this guidance was superseded after the isolation review.\n\nThis fictional NovaTech document is evidence for the project references listed in the structured catalog. Use status and update time to resolve conflicting guidance.\n",
+      "title": "Atlas Pilot Checklist",
+      "updated_at": "2025-07-06T09:00:00Z"
+    },
+    {
+      "id": "DOC001",
+      "status": "current",
+      "text": "# NovaTech Tenant Isolation Standard\n\n- Document ID: DOC001\n- Source ID: DOCUMENT-DOC001\n- Status: current\n- Updated: 2025-07-05T09:00:00Z\n\nCurrent policy requires tenant-scoped indexes and reviewed isolation tests.\n\nThis fictional NovaTech document is evidence for the project references listed in the structured catalog. Use status and update time to resolve conflicting guidance.\n",
+      "title": "NovaTech Tenant Isolation Standard",
+      "updated_at": "2025-07-05T09:00:00Z"
+    }
+  ],
+  "query_file": "queries\\atlas_search.cypher",
+  "executed_at_utc": "2026-10-18T07:24:35.730178+00:00"
+}

@@ -1,0 +1,25 @@
+# Local credentials and environment configuration
+.env
+**/.env
+!**/.env.example
+**/cloud_config.ini
+
+# Python environments and generated files
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local FalkorDB data and application logs
+*.rdb
+atlas_search_copilot/logs/
+
+# Local source and expanded graph exports
+/data/
+/falkordb-export-novatech/
+/falkordb-export-novatech-corrected/
+/falkordb-export-novatech-expanded/

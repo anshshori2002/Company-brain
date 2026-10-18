@@ -1,0 +1,4 @@
+FalkorDB
+streamlit
+google-genai
+python-dotenv

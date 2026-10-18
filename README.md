@@ -1,4 +1,4 @@
-# Company Brain
+# Nova Tech Company Brain
 
 Company Brain is a Streamlit application that lets users ask natural-language questions about company projects, tasks, teams, employees, decisions, and dependencies. It uses a local Ollama model to translate questions into OpenCypher, queries a FalkorDB graph, and turns the results into a short operational summary.
 
@@ -19,6 +19,20 @@ Company Brain is a Streamlit application that lets users ask natural-language qu
 2. Ollama converts the question into a single OpenCypher query using the graph schema in `app.py`.
 3. The generated query runs against the `novatech` graph in FalkorDB.
 4. The matching records are displayed and passed back to Ollama for a concise explanation.
+
+## What FalkorDB solves in this project
+
+Company information is naturally connected: employees belong to teams, employees have expertise, projects contain tasks, tasks can block other tasks, and decisions can affect projects. FalkorDB stores these entities and their relationships as a graph so the application can follow those connections directly.
+
+In this project, FalkorDB provides:
+
+- **A connected view of company knowledge:** Projects, tasks, people, teams, meetings, documents, and decisions live in one relationship-aware data model.
+- **Relationship and dependency analysis:** The application can find project dependencies, task blockers, decision impact, project ownership, and team expertise with graph traversals.
+- **Flexible discovery:** The graph can be explored by labels, properties, and relationship types without requiring a large set of predefined SQL joins.
+- **A queryable source of truth for the AI assistant:** Ollama generates OpenCypher, but FalkorDB executes the query against the actual company data. This grounds the response in stored graph records instead of asking the language model to invent an answer.
+- **Schema inspection during development:** `explore_data.py` helps discover node categories, sample properties, and relationship paths before adding or changing assistant prompts.
+
+Ollama and FalkorDB have different responsibilities: Ollama understands the user's language and produces a query or summary, while FalkorDB performs the authoritative graph search. The assistant can only answer questions supported by the data and schema available in the `novatech` graph.
 
 ## Prerequisites
 
@@ -98,6 +112,48 @@ Open that URL in a browser and ask questions such as:
 - `What projects depend on Platform Expansion?`
 - `Which decisions affected a project?`
 - `Show me a database summary.`
+
+## Example prompts
+
+Copy and paste any of the following prompts into the chat. Replace names or expertise areas with values that exist in your graph.
+
+### People and teams
+
+- `Who has Infrastructure expertise and which team do they belong to?`
+- `Which employees have expertise in security?`
+- `Which team does Jane Doe belong to?`
+- `What projects are owned by Jane Doe?`
+- `Show the employees assigned to tasks in the Platform Expansion project.`
+
+### Projects and tasks
+
+- `What tasks belong to the Platform Expansion project?`
+- `Which projects depend on Platform Expansion?`
+- `Show all tasks that are blocking another task.`
+- `What downstream projects or tasks could be affected if Platform Expansion stalls?`
+- `Who is assigned to the tasks in the most important project?`
+
+### Decisions and meetings
+
+- `Which decisions were made by Jane Doe?`
+- `Which projects were affected by decisions made by Jane Doe?`
+- `What decisions came from meetings?`
+- `Show the projects affected by the latest available decisions.`
+
+### Documents and operational context
+
+- `Which documents mention the Platform Expansion project?`
+- `What company entities are connected to this project?`
+- `Show a high-level summary of the database.`
+- `Give me a short operational summary of the relationships around Platform Expansion.`
+
+### Better prompt-writing tips
+
+- Use the exact project, employee, team, or expertise name when you know it.
+- Ask about one relationship or business question at a time.
+- Use terms represented in the graph, such as `assigned`, `owns`, `belongs to`, `depends on`, `blocks`, `mentions`, or `affects`.
+- If a prompt returns no results, first check spelling and then inspect the graph with `python explore_data.py`.
+- Results are capped at five records by the generated query, so ask a narrower question when the graph contains many matches.
 
 ## Utility scripts
 

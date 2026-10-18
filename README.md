@@ -2,6 +2,23 @@
 
 Company Brain is a Streamlit application that lets users ask natural-language questions about company projects, tasks, teams, employees, decisions, and dependencies. It uses a local Ollama model to translate questions into OpenCypher, queries a FalkorDB graph, and turns the results into a short operational summary.
 
+## Problem it solves
+
+Companies often store important information across project trackers, meeting notes, documents, employee records, and team updates. Because this information is disconnected, answering a simple question can require searching several systems and manually tracing relationships. This makes it difficult to identify who owns a project, which tasks are blocked, what decisions affected a deliverable, or which projects depend on one another.
+
+Company Brain solves this problem by bringing these connected facts into a single company knowledge graph and providing a conversational way to search it. Instead of manually browsing records or writing complex graph queries, a user can ask a question in plain English and receive an answer based on the relationships stored in FalkorDB.
+
+The project helps teams:
+
+- Find relevant people, teams, expertise, projects, and tasks faster.
+- Understand dependencies and identify potential blockers.
+- Trace decisions back to meetings, employees, and affected projects.
+- Discover documents and entities related to a project.
+- Reduce the time spent manually joining information from separate sources.
+- Make operational knowledge easier to access for non-technical users.
+
+It is intended to reduce information silos and improve operational visibility. It does not replace the underlying company systems; it provides a unified, natural-language view of the connected information stored in the `novatech` graph.
+
 ## Features
 
 - Natural-language chat interface built with Streamlit.

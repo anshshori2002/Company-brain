@@ -50,7 +50,9 @@ class AgentLoggingService:
         plan = result.get("plan", [])
         tool_results = result.get("tool_results", [])
         sources = list(result.get("sources", []))
-        cited = list(dict.fromkeys(_CITATION.findall(result.get("answer", ""))))
+        is_web_turn = result.get("answer_mode") == "Web search agent"
+        cited = [] if is_web_turn else list(dict.fromkeys(_CITATION.findall(result.get("answer", ""))))
+        web_sources = list(result.get("web_sources", []))
         outputs = []
         for item in tool_results:
             value = item.get("result")
@@ -81,11 +83,14 @@ class AgentLoggingService:
             "source_ids": sources,
             "answer_citations": cited,
             "citation_validation": result.get("citation_validation"),
-            "citation_ids_returned": set(cited).issubset(set(sources)),
+            "citation_ids_returned": None if is_web_turn else set(cited).issubset(set(sources)),
+            "web_source_count": len(web_sources),
         }
         if self.capture_text:
             event["question"] = question
             event["answer"] = result.get("answer", "")
+            event["search_queries"] = result.get("search_queries", [])
+            event["web_sources"] = web_sources
         self._write(event)
         return event_id
 
@@ -132,6 +137,7 @@ class AgentLoggingService:
         tool_errors = sum(event.get("tool_error_count", 0) for event in turns)
         feedback = [event for event in events if event.get("event") == "user_feedback"]
         model_turns = [event for event in turns if event.get("answer_mode") == "Gemini tool agent"]
+        web_turns = [event for event in turns if event.get("answer_mode") == "Web search agent"]
         validated = [event for event in model_turns if event.get("citation_validation") is not None]
         feedback_up = sum(1 for event in feedback if event.get("rating") == "up")
         feedback_count = sum(1 for event in feedback if event.get("rating") in {"up", "down"})
@@ -140,6 +146,7 @@ class AgentLoggingService:
             "errors": len(errors),
             "tool_errors": tool_errors,
             "gemini_turns": len(model_turns),
+            "web_search_turns": len(web_turns),
             "fallback_turns": sum(1 for event in turns if "fallback" in str(event.get("answer_mode", "")).lower()),
             "avg_latency_ms": round(mean(event.get("latency_ms", 0) for event in turns), 1) if turns else 0,
             "avg_tool_calls": round(mean(len(event.get("tool_calls", [])) for event in turns), 1) if turns else 0,

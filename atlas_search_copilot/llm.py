@@ -37,6 +37,11 @@ def _console_log(event: str, **fields: Any) -> None:
         "llm_request_error": "\033[31m",    # red
         "llm_turn_error": "\033[31m",       # red
         "llm_skipped": "\033[90m",          # gray
+        "web_search_request": "\033[36m",   # cyan
+        "web_search_response": "\033[92m",  # bright green
+        "web_search_complete": "\033[34m",  # blue
+        "web_search_error": "\033[31m",     # red
+        "web_search_skipped": "\033[90m",   # gray
     }
     color = "" if os.getenv("NO_COLOR") is not None else colors.get(event, "")
     reset = "\033[0m" if color else ""
@@ -98,6 +103,137 @@ def _function_call_log(call: Any) -> dict[str, Any]:
         "name": getattr(call, "name", None),
         "args": dict(getattr(call, "args", None) or {}),
     }
+
+
+def run_web_search_agent(question: str) -> dict[str, Any] | None:
+    """Answer a general question with Gemini Grounding and Google Search citations."""
+    turn_started = time.perf_counter()
+    turn_id = str(uuid.uuid4())
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        _console_log("web_search_skipped", turn_id=turn_id, reason="No Gemini API key configured.")
+        return None
+
+    model = os.getenv("GOOGLE_GENAI_MODEL", DEFAULT_MODEL)
+    system_instruction = (
+        "Answer the user's general question using Google Search grounding. Search for reliable sources, "
+        "prioritize primary sources when available, distinguish facts from uncertainty, and do not invent "
+        "facts or citations. The application will attach citations from the grounding metadata."
+    )
+    _console_log(
+        "web_search_request",
+        turn_id=turn_id,
+        model=model,
+        input={"system_instruction": system_instruction, "question": question},
+    )
+    request_started = time.perf_counter()
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model,
+            contents=question,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.2,
+                max_output_tokens=900,
+            ),
+        )
+        answer = (response.text or "").strip()
+        candidate = response.candidates[0] if response.candidates else None
+        metadata = getattr(candidate, "grounding_metadata", None) if candidate else None
+        chunks = getattr(metadata, "grounding_chunks", None) or []
+        sources: list[dict[str, Any]] = []
+        chunk_to_source: dict[int, int] = {}
+        source_by_url: dict[str, int] = {}
+        for chunk_index, chunk in enumerate(chunks):
+            web = getattr(chunk, "web", None)
+            uri = getattr(web, "uri", None) if web else None
+            if not uri or not str(uri).startswith(("https://", "http://")):
+                continue
+            if uri not in source_by_url:
+                source_by_url[uri] = len(sources) + 1
+                sources.append({
+                    "title": getattr(web, "title", None) or uri,
+                    "url": uri,
+                })
+            chunk_to_source[chunk_index] = source_by_url[uri]
+
+        supports = getattr(metadata, "grounding_supports", None) or []
+        citations_by_end: dict[int, set[int]] = {}
+        for support in supports:
+            segment = getattr(support, "segment", None)
+            end_index = getattr(segment, "end_index", None) if segment else None
+            if end_index is None:
+                continue
+            citation_numbers = {
+                chunk_to_source[index]
+                for index in (getattr(support, "grounding_chunk_indices", None) or [])
+                if index in chunk_to_source
+            }
+            if citation_numbers:
+                citations_by_end.setdefault(int(end_index), set()).update(citation_numbers)
+
+        for end_index in sorted(citations_by_end, reverse=True):
+            links = " ".join(
+                f"[{number}]({sources[number - 1]['url']})"
+                for number in sorted(citations_by_end[end_index])
+            )
+            answer = answer[:end_index] + f" {links}" + answer[end_index:]
+
+        # If grounding returned source chunks but no claim spans, still expose the references.
+        if sources and not citations_by_end:
+            answer += "\n\nSources: " + " ".join(
+                f"[{index}]({source['url']})" for index, source in enumerate(sources, start=1)
+            )
+
+        queries = list(getattr(metadata, "web_search_queries", None) or []) if metadata else []
+        usage = _usage_counts(response)
+        _console_log(
+            "web_search_response",
+            turn_id=turn_id,
+            model=model,
+            elapsed_ms=round((time.perf_counter() - request_started) * 1000, 2),
+            search_queries=queries,
+            answer=answer,
+            sources=sources,
+            tokens=usage or None,
+        )
+        if not answer or not sources:
+            _console_log(
+                "web_search_complete",
+                turn_id=turn_id,
+                outcome="no_grounded_sources",
+                elapsed_ms=round((time.perf_counter() - turn_started) * 1000, 2),
+                tokens=usage or None,
+            )
+            return None
+        _console_log(
+            "web_search_complete",
+            turn_id=turn_id,
+            outcome="success",
+            elapsed_ms=round((time.perf_counter() - turn_started) * 1000, 2),
+            source_count=len(sources),
+            tokens=usage or None,
+        )
+        return {
+            "answer": answer,
+            "web_sources": sources,
+            "search_queries": queries,
+            "model": model,
+            "citation_validation": True,
+        }
+    except Exception as exc:
+        _console_log(
+            "web_search_error",
+            turn_id=turn_id,
+            error_type=type(exc).__name__,
+            elapsed_ms=round((time.perf_counter() - turn_started) * 1000, 2),
+        )
+        return None
 
 
 def _collect_record_ids(value: Any) -> set[str]:

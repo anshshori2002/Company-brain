@@ -8,7 +8,7 @@ from typing import Any
 from falkordb import FalkorDB
 
 from graph_query import _connection_settings, _json_value
-from llm import run_tool_calling_agent
+from llm import run_tool_calling_agent, run_web_search_agent
 
 
 def _column_name(header: Any) -> str:
@@ -27,6 +27,33 @@ def _rows(result: Any) -> list[dict[str, Any]]:
 
 def _clean(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value).lower()).strip()
+
+
+_GRAPH_NODE_SCHEMA = {
+    "Project": {"description": "Company initiatives and workstreams.", "key_properties": ["id", "name", "status", "description", "blockers", "deadline", "risks"]},
+    "Decision": {"description": "Decisions that affect or block projects, with a title, rationale, and status.", "key_properties": ["id", "title", "description", "status"]},
+    "Employee": {"description": "People who own projects, make decisions, or are assigned tasks.", "key_properties": ["id", "name", "title"]},
+    "Meeting": {"description": "Meeting records that can provide the source for a decision.", "key_properties": ["id", "title", "date", "text"]},
+    "Task": {"description": "Project work items, their status and priority, and task dependencies.", "key_properties": ["id", "title", "status", "priority"]},
+    "Document": {"description": "Source documents linked to projects, with text and lifecycle metadata.", "key_properties": ["id", "title", "status", "updated_at", "source_id", "text"]},
+    "Expertise": {"description": "Skills associated with employees.", "key_properties": ["id", "name"]},
+    "Team": {"description": "Organizational teams associated with employees.", "key_properties": ["id", "name"]},
+}
+
+_GRAPH_RELATIONSHIP_SCHEMA = {
+    "PROJECT_BLOCKED_BY_DECISION": {"from": "Project", "to": "Decision", "meaning": "The project is blocked by this decision."},
+    "DECISION_AFFECTS_PROJECT": {"from": "Decision", "to": "Project", "meaning": "The decision affects this project."},
+    "DECISION_MADE_BY_EMPLOYEE": {"from": "Decision", "to": "Employee", "meaning": "The employee made or owns the decision."},
+    "MEETING_MADE_DECISION": {"from": "Meeting", "to": "Decision", "meaning": "The meeting record documents the decision."},
+    "PROJECT_HAS_TASK": {"from": "Project", "to": "Task", "meaning": "The task belongs to the project."},
+    "EMPLOYEE_ASSIGNED_TO_TASK": {"from": "Employee", "to": "Task", "meaning": "The employee is assigned to the task."},
+    "TASK_BLOCKED_BY_TASK": {"from": "Task", "to": "Task", "meaning": "The task is blocked by another task."},
+    "PROJECT_DEPENDS_ON_PROJECT": {"from": "Project", "to": "Project", "meaning": "The first project depends on the second project."},
+    "DOCUMENT_MENTIONS_PROJECT": {"from": "Document", "to": "Project", "meaning": "The source document mentions the project."},
+    "EMPLOYEE_OWNS_PROJECT": {"from": "Employee", "to": "Project", "meaning": "The employee owns the project."},
+    "EMPLOYEE_HAS_EXPERTISE": {"from": "Employee", "to": "Expertise", "meaning": "The employee has this expertise."},
+    "EMPLOYEE_BELONGS_TO_TEAM": {"from": "Employee", "to": "Team", "meaning": "The employee belongs to this team."},
+}
 
 
 class CompanyBrainAgent:
@@ -52,6 +79,36 @@ class CompanyBrainAgent:
 
     def _projects(self) -> list[dict[str, Any]]:
         return self._query("MATCH (p:Project) RETURN p.id AS id, p.name AS name, p.status AS status")
+
+    def _is_company_question(self, question: str, last_project_id: str | None) -> bool:
+        """Keep company-record questions on FalkorDB; route general knowledge to web search."""
+        q = _clean(question)
+        if re.search(r"\b(?:PRJ|EMP|DEC|TASK|DOC|MEET)\d+\b", question, re.I):
+            return True
+        if re.search(r"\b(novatech|company brain|our company|our data|our graph|in the graph|from the graph)\b", q):
+            return True
+
+        # Exact project names disambiguate short, natural questions such as “Who owns Atlas Search?”
+        try:
+            for project in self._projects():
+                name = _clean(project.get("name", ""))
+                if name and name in q:
+                    return True
+        except Exception:
+            pass
+
+        if last_project_id and re.search(r"\b(it|this project|that project|those tasks|its owner)\b", q):
+            return True
+
+        if re.search(r"\b(how many|count|total number|number of|total no)\b", q) and re.search(
+            r"\b(projects?|decisions?|employees?|people|tasks?|documents?|meetings?|records?|nodes?|relationships?)\b", q
+        ):
+            return True
+        if re.search(r"\b(how (?:is|are).{0,45}(?:stored|represented)|(?:graph )?schema|node labels?|relationship types?)\b", q):
+            return True
+        if re.search(r"\b(who (?:owns|made|decided|is assigned|works on|knows)|(?:project|task) (?:owner|status|blocker|dependency)|blocking (?:the )?project|decision maker)\b", q):
+            return True
+        return False
 
     @staticmethod
     def _match_project(question: str, projects: list[dict[str, Any]], last_project_id: str | None) -> dict[str, Any] | None:
@@ -135,6 +192,34 @@ class CompanyBrainAgent:
                 "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "Optional words from the project name, description, or status."}}},
             },
             {
+                "name": "count_records",
+                "description": "Get exact database counts. Use a node label such as Project or Decision, a relationship type, 'nodes', 'relationships', or 'all' for both totals.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "record_type": {
+                            "type": "string",
+                            "enum": ["all", "nodes", "relationships", *_GRAPH_NODE_SCHEMA.keys(), *_GRAPH_RELATIONSHIP_SCHEMA.keys()],
+                            "description": "A graph node label, relationship type, 'nodes', 'relationships', or 'all'.",
+                        }
+                    },
+                    "required": ["record_type"],
+                },
+            },
+            {
+                "name": "describe_graph_schema",
+                "description": "Explain how data is modeled in FalkorDB: node labels, commonly used fields, relationship directions, and meanings. Use for questions like how decisions are stored or how projects connect to tasks.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "about": {
+                            "type": "string",
+                            "description": "Optional label, relationship, or topic to explain; use 'all' for the complete graph schema.",
+                        }
+                    },
+                },
+            },
+            {
                 "name": "get_project_dossier",
                 "description": "Read a project and its linked decisions, owners, meetings, tasks, people, dependencies, and documents by exact project ID.",
                 "parameters": {"type": "object", "properties": {"project_id": {"type": "string", "description": "Exact project record ID returned by list_projects."}}, "required": ["project_id"]},
@@ -164,12 +249,75 @@ class CompanyBrainAgent:
     def _tool_handlers(self) -> dict[str, Any]:
         return {
             "list_projects": self._tool_list_projects,
+            "count_records": self._tool_count_records,
+            "describe_graph_schema": self._tool_describe_graph_schema,
             "get_project_dossier": self._tool_get_project_dossier,
             "find_expertise": self._tool_find_expertise,
             "search_documents": self._tool_search_documents,
             "search_tasks": self._tool_search_tasks,
             "get_person_profile": self._tool_get_person_profile,
         }
+
+    def _tool_count_records(self, record_type: str) -> dict[str, Any]:
+        """Return exact counts using only fixed, allowlisted Cypher queries."""
+        normalized = record_type.strip().upper()
+        node_names = {name.upper(): name for name in _GRAPH_NODE_SCHEMA}
+        node_names.update({f"{name.upper()}S": name for name in _GRAPH_NODE_SCHEMA if name != "Expertise"})
+        node_names["EXPERTISES"] = "Expertise"
+        rel_names = {name.upper(): name for name in _GRAPH_RELATIONSHIP_SCHEMA}
+
+        if normalized == "ALL":
+            nodes = int(self._query("MATCH (n) RETURN count(n) AS count")[0]["count"])
+            relationships = int(self._query("MATCH ()-[r]->() RETURN count(r) AS count")[0]["count"])
+            return {
+                "record_type": "all",
+                "node_count": nodes,
+                "relationship_count": relationships,
+                "total_records": nodes + relationships,
+            }
+        if normalized in {"NODE", "NODES"}:
+            count = int(self._query("MATCH (n) RETURN count(n) AS count")[0]["count"])
+            return {"record_type": "nodes", "count": count}
+        if normalized in {"RELATIONSHIP", "RELATIONSHIPS", "EDGES"}:
+            count = int(self._query("MATCH ()-[r]->() RETURN count(r) AS count")[0]["count"])
+            return {"record_type": "relationships", "count": count}
+        if normalized in node_names:
+            label = node_names[normalized]
+            count = int(self._query(f"MATCH (n:{label}) RETURN count(n) AS count")[0]["count"])
+            return {"record_type": label, "kind": "node", "count": count}
+        if normalized in rel_names:
+            rel_type = rel_names[normalized]
+            count = int(self._query(f"MATCH ()-[r:{rel_type}]->() RETURN count(r) AS count")[0]["count"])
+            return {"record_type": rel_type, "kind": "relationship", "count": count}
+        raise ValueError("Choose a known graph label, relationship type, 'nodes', 'relationships', or 'all'.")
+
+    def _tool_describe_graph_schema(self, about: str = "all") -> dict[str, Any]:
+        """Describe node and relationship types from the project's data model."""
+        query = _clean(about)
+        if not query or query in {"all", "everything", "schema", "graph"}:
+            return {
+                "node_types": [{"label": label, **details} for label, details in _GRAPH_NODE_SCHEMA.items()],
+                "relationship_types": [
+                    {"type": rel_type, **details} for rel_type, details in _GRAPH_RELATIONSHIP_SCHEMA.items()
+                ],
+            }
+
+        node_types = [
+            {"label": label, **details}
+            for label, details in _GRAPH_NODE_SCHEMA.items()
+            if query in _clean(label)
+            or query in _clean(details["description"])
+            or any(query in _clean(prop) for prop in details["key_properties"])
+        ]
+        relationship_types = [
+            {"type": rel_type, **details}
+            for rel_type, details in _GRAPH_RELATIONSHIP_SCHEMA.items()
+            if query in _clean(rel_type)
+            or query in _clean(details["meaning"])
+            or query in _clean(details["from"])
+            or query in _clean(details["to"])
+        ]
+        return {"about": about, "node_types": node_types, "relationship_types": relationship_types}
 
     def _tool_list_projects(self, query: str = "") -> list[dict[str, Any]]:
         query = query.strip()[:120]
@@ -342,6 +490,34 @@ class CompanyBrainAgent:
         question = question.strip()
         if not question:
             raise ValueError("Ask a question about a project, person, decision, dependency, or document.")
+        if not self._is_company_question(question, last_project_id):
+            if self.llm_configured:
+                web_result = run_web_search_agent(question)
+                if web_result:
+                    return {
+                        "question": question,
+                        **web_result,
+                        "answer_mode": "Web search agent",
+                        "llm_configured": True,
+                        "plan": [{"tool": "google_search", "why": "Search the web and cite claims using Gemini grounding metadata."}],
+                        "tool_results": [],
+                        "project": None,
+                        "dossier": None,
+                        "experts": [],
+                        "sources": [],
+                    }
+            return {
+                "question": question,
+                "answer": "This looks like a general question, but web search is unavailable. Configure a Gemini API key to answer it with citations. For company information, ask about a project, person, decision, task, or document in the NovaTech graph.",
+                "answer_mode": "Web search unavailable",
+                "llm_configured": self.llm_configured,
+                "plan": [],
+                "tool_results": [],
+                "project": None,
+                "dossier": None,
+                "experts": [],
+                "sources": [],
+            }
         if self.llm_configured:
             agent_result = run_tool_calling_agent(question, self._tool_specs(), self._tool_handlers())
             if agent_result:

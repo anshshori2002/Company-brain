@@ -47,7 +47,7 @@ The query script writes `results/atlas_search_result.json`; clicking the app but
 
 ## Company Brain agent
 
-The app accepts natural-language questions and queries the live FalkorDB graph. It follows linked project, decision, people, task, expertise, and document records. Answers cite graph record IDs and put current documents ahead of draft or superseded guidance. When Gemini is configured, it chooses the graph lookups and can chain multiple read-only tools before answering.
+The app accepts natural-language questions and routes company-data questions to FalkorDB. It follows linked project, decision, people, task, expertise, and document records. Graph answers cite record IDs and put current documents ahead of draft or superseded guidance. When Gemini is configured, it chooses the graph lookups and can chain multiple read-only tools before answering. General knowledge questions go to Gemini with Google Search grounding and clickable web citations.
 
 The included challenge investigations are available from the **Try a challenge investigation** selector. Example free-form questions:
 
@@ -71,6 +71,8 @@ When a Gemini API key is configured, Gemini now selects and calls read-only grap
 Available tools:
 
 - `list_projects` — find projects by name or status words.
+- `count_records` — get exact counts for a node label, relationship type, all nodes, all relationships, or the whole graph.
+- `describe_graph_schema` — explain node labels, commonly used properties, relationship direction, and meaning.
 - `get_project_dossier` — fetch a project's decisions, owners, meetings, tasks, dependencies, and linked documents.
 - `find_expertise` — find employees and teams by expertise.
 - `search_documents` — search document text and optionally filter by project.
@@ -79,9 +81,11 @@ Available tools:
 
 The API key is read from `atlas_search_copilot/.env` (or the process environment); the local file is ignored by Git. The model defaults to `gemini-3.8-flash`; override it with `GOOGLE_GENAI_MODEL` if needed.
 
+General questions use Gemini's Google Search grounding. The answer displays citations inserted from grounding metadata and a list of the linked source pages. The agent routes clear company questions (project/person/decision IDs, project names, company-specific counts, ownership and blocking questions, and graph-schema questions) to FalkorDB. Other questions use web search. Web sources and search queries are included in local logs only when `COMPANY_BRAIN_LOG_CONTENT` is enabled.
+
 ## Agent logging and evaluation
 
-Each completed turn is appended to `atlas_search_copilot/logs/agent_events.jsonl`, with rotation and four retained backups. Events capture latency, selected tools and arguments, record counts, source IDs, citations, validation status, and fallback/error state. Raw FalkorDB tool result payloads are not copied to the log. Question and answer text are logged locally by default to support manual evaluation; set `COMPANY_BRAIN_LOG_CONTENT=false` in `.env` for metadata-only logging. The log directory is ignored by Git. Users can rate answers with thumbs up/down; the sidebar's **Evaluation & logs** panel summarizes model/fallback counts, latency, tool usage, citation checks, errors, and feedback.
+Each completed turn is appended to `atlas_search_copilot/logs/agent_events.jsonl`, with rotation and four retained backups. Events capture latency, selected tools and arguments, record counts, source IDs, web citations, validation status, and fallback/error state. Raw FalkorDB tool result payloads are not copied to the log. Question and answer text are logged locally by default to support manual evaluation; set `COMPANY_BRAIN_LOG_CONTENT=false` in `.env` for metadata-only logging. The log directory is ignored by Git. Users can rate answers with thumbs up/down; the sidebar's **Evaluation & logs** panel summarizes model/fallback counts, web-search turns, latency, tool usage, citation checks, errors, and feedback.
 
 Add your key to `atlas_search_copilot/.env`:
 

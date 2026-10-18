@@ -18,6 +18,8 @@ GEMINI_READY = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
 
 TOOL_HELP = {
     "list_projects": "Find projects by name or status.",
+    "count_records": "Get exact node, relationship, or graph-wide counts.",
+    "describe_graph_schema": "Explain node types, common fields, and how graph relationships are stored.",
     "get_project_dossier": "Follow a project through decisions, owners, work, dependencies, and documents.",
     "find_expertise": "Find colleagues by expertise.",
     "search_documents": "Search source document text.",
@@ -50,7 +52,7 @@ def get_logging_service() -> AgentLoggingService:
 
 def run_question(question: str) -> None:
     started = time.perf_counter()
-    busy_message = "Gemini is choosing graph tools and gathering evidence…" if GEMINI_READY else "Gathering evidence from FalkorDB…"
+    busy_message = "The agent is choosing a source and gathering evidence…" if GEMINI_READY else "Gathering evidence from FalkorDB…"
     with st.spinner(busy_message):
         try:
             agent = get_agent()
@@ -160,8 +162,8 @@ with st.sidebar:
     st.divider()
     st.markdown("**Agent mode**")
     if GEMINI_READY:
-        st.success("Gemini tool-calling is enabled", icon="✨")
-        st.caption("Gemini chooses read-only graph tools. Python runs each approved lookup and checks citations.")
+        st.success("Gemini graph tools and web search are enabled", icon="✨")
+        st.caption("Company questions use read-only FalkorDB lookups; general questions use Google Search grounding with citations.")
     else:
         st.info("Graph-backed fallback mode", icon="🔎")
         st.caption("Add a Gemini key to the local `.env` file to enable model-selected tools.")
@@ -180,6 +182,7 @@ with st.sidebar:
         metric_cols = st.columns(2)
         metric_cols[0].metric("Logged turns", metrics["turns"])
         metric_cols[1].metric("Gemini tool-agent turns", metrics["gemini_turns"])
+        st.metric("Web-search turns", metrics["web_search_turns"])
         metric_cols = st.columns(2)
         metric_cols[0].metric("Average response time", f"{metrics['avg_latency_ms']} ms")
         metric_cols[1].metric("Average tools per turn", metrics["avg_tool_calls"])
@@ -196,7 +199,7 @@ with st.sidebar:
 
 st.title("Ask your company brain")
 st.markdown(
-    '<p class="hero-caption">Ask about projects, decisions, people, work, or company documents. Answers are grounded in graph records.</p>',
+    '<p class="hero-caption">Ask about company records for graph-grounded answers, or general questions for web search with citations.</p>',
     unsafe_allow_html=True,
 )
 
@@ -233,7 +236,15 @@ for turn in conversation:
     result = turn["result"]
     with st.chat_message("assistant", avatar="🧠"):
         st.markdown(result["answer"])
-        if result.get("answer_mode") == "Gemini tool agent":
+        if result.get("answer_mode") == "Web search agent":
+            st.caption(f"Web search agent · {result.get('model', 'Gemini')} · citations from Google Search grounding")
+            if result.get("web_sources"):
+                st.markdown("**Web sources**")
+                for index, source in enumerate(result["web_sources"], start=1):
+                    st.markdown(f"{index}. [{source.get('title') or source.get('url')}]({source.get('url')})")
+        elif result.get("answer_mode") == "Web search unavailable":
+            st.caption("Web search unavailable · add a Gemini API key for general questions")
+        elif result.get("answer_mode") == "Gemini tool agent":
             st.caption(f"Gemini agent · {result.get('model', 'Gemini')} · grounded in retrieved records")
         elif result.get("llm_configured"):
             st.caption("Graph-grounded fallback · Gemini could not complete a cited tool-call answer")
